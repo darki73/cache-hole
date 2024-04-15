@@ -1,0 +1,11 @@
+# IDE related files
+.idea/*
+.vscode/*
+
+# Pi-Hole related files
+volumes/pihole/*
+!volumes/pihole/.gitkeep
+
+# DNSMasq related files
+volumes/dnsmasq/*
+!volumes/dnsmasq/.gitkeep

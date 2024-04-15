@@ -1,0 +1,77 @@
+# The version of the docker-compose file
+version: '3.8'
+
+# Docker services list
+services:
+  # Watchtower container configuration
+  watchtower:
+    container_name: watchtower
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      cache_hole_network:
+        ipv4_address: ${WATCHTOWER_NETWORK_ADDRESS}
+
+  # Cloudflared container configuration
+  cloudflared:
+    container_name: cloudflared
+    image: cloudflare/cloudflared
+    restart: unless-stopped
+    command: proxy-dns --address ${CLOUDFLARED_BIND_ADDRESS} --port ${CLOUDFLARED_BIND_PORT} --upstream ${CLOUDFLARED_PRIMARY_RESOLVER} --upstream ${CLOUDFLARED_SECONDARY_RESOLVER}
+    networks:
+      cache_hole_network:
+        ipv4_address: ${CLOUDFLARED_NETWORK_ADDRESS}
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    depends_on:
+      - watchtower
+
+  # Lancache DNS container configuration
+  lancache_dns:
+    container_name: lancache_dns
+    image: lancachenet/lancache-dns:latest
+    restart: unless-stopped
+    env_file:
+      - lancache.env
+    environment:
+      UPSTREAM_DNS: "${CLOUDFLARED_NETWORK_ADDRESS}"
+    networks:
+      cache_hole_network:
+        ipv4_address: ${LANCACHE_DNS_NETWORK_ADDRESS}
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    depends_on:
+      - cloudflared
+  
+  # Pi-Hole container configuration
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    restart: unless-stopped
+    environment:
+      DNS1: "${LANCACHE_DNS_NETWORK_ADDRESS}"
+      DNS2: "no"
+    ports:
+      - 53:53/tcp
+      - 53:53/udp
+      - 80:80/tcp
+    volumes:
+      - ${PIHOLE_CONFIGURATION_ROOT}:/etc/pihole
+      - ${DNSMASQ_CONFIGURATION_ROOT}:/etc/dnsmasq.d
+    networks:
+      cache_hole_network:
+        ipv4_address: ${PIHOLE_NETWORK_ADDRESS}
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
+    depends_on:
+      - lancache_dns
+
+# Configuration for the custom networks for the containers
+networks:
+  cache_hole_network:
+    name: cache_hole_network
+    ipam:
+      config:
+        - subnet: ${CUSTOM_DNS_NETWORK_ADDRESS}/${CUSTOM_DNS_NETWORK_CIDR}
